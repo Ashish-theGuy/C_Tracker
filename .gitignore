@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# YOLOv8 Model files (too large for Git)
+*.pt
+*.onnx
+*.engine
+
+# Results and outputs
+result_*.jpg
+result_*.jpeg
+result_*.png
+result_*.mp4
+result_*.json
+output_*.jpg
+output_*.mp4
+screenshot_*.jpg
+
+# Test files (user uploads)
+Image.jpeg
+video.mp4
+*.mp4
+*.avi
+*.mov
+*.mkv
+sample_*.jpg
+sample_*.mp4
+
+# Data and backend
+data/
+videos/
+*.db
+*.sqlite
+
+# Backend
+backend/__pycache__/
+backend/*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+

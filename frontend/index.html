@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kerala Cities - AI Crowd Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Kerala Cities - AI Crowd Assistant</h1>
+            <p>Ask about crowd conditions in Kerala's famous tourist spots</p>
+        </header>
+
+        <div class="chat-container">
+            <div class="prompt-section" id="prompt-section">
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="user-input" 
+                        placeholder="Ask: Should I visit Munnar? Is Kochi crowded?"
+                        autocomplete="off"
+                    />
+                    <button id="send-btn" onclick="askAI()">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="response-section" id="response-section" style="display: none;">
+                <div class="response-content" id="response-content"></div>
+            </div>
+        </div>
+
+        <div class="cities-info">
+            <p>Available cities: <span id="cities-list">Loading...</span></p>
+        </div>
+    
+    <!-- Live stream modal -->
+    <div id="live-modal" class="live-modal" style="display:none;">
+        <div class="live-modal-content">
+            <button class="live-modal-close" id="live-modal-close">✕</button>
+            <h3 id="live-modal-title">Live Count</h3>
+            <div class="live-stream-wrapper">
+                <img id="live-stream-img" src="" alt="Live stream" />
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
