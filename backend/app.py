@@ -249,6 +249,21 @@ def get_live_analysis(city_name):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+active_stream_stats = {}
+
+@app.route('/api/live-stream-stats/<city_name>')
+def live_stream_stats(city_name):
+    """Get current stats from an active MJPEG stream for a city"""
+    stats = active_stream_stats.get(city_name)
+    if not stats:
+        location_data = data_manager.get_location_data(city_name)
+        if location_data:
+            return jsonify({
+                "count": location_data.get('current_people', 0),
+                "level": location_data.get('crowd_level', 'Unknown')
+            })
+        return jsonify({"count": 0, "level": "Unknown"})
+    return jsonify(stats)
 
 @app.route('/api/live-stream/<city_name>')
 def live_stream(city_name):
@@ -275,6 +290,13 @@ def live_stream(city_name):
                     continue
 
                 annotated_frame, person_count, _ = live_analyzer.analyze_frame(frame)
+                
+                # Update global stats for frontend polling to sync UI text with the video
+                active_stream_stats[city_name] = {
+                    "count": person_count,
+                    "level": live_analyzer.detector._classify_crowd_level(person_count)
+                }
+
                 # Encode as JPEG
                 success, buffer = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if not success:

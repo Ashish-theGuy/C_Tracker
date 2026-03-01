@@ -1,6 +1,6 @@
 // API Base URL
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-    ? 'http://localhost:5000/api' 
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:5000/api'
     : '/api';
 
 // Map instance
@@ -12,7 +12,7 @@ let citiesData = [];
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
     fetchCitiesData();
-    
+
     // Refresh button
     document.getElementById('refresh-btn').addEventListener('click', () => {
         const btn = document.getElementById('refresh-btn');
@@ -23,12 +23,12 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.disabled = false;
         });
     });
-    
+
     // Modal close
     document.getElementById('live-modal-close').addEventListener('click', closeLiveModal);
-    
-    // Auto-refresh data every 60 seconds
-    setInterval(fetchCitiesData, 60000);
+
+    // Auto-refresh data every 5 seconds to better reflect changes
+    setInterval(fetchCitiesData, 5000);
 });
 
 // Initialize Leaflet Map
@@ -37,7 +37,7 @@ function initMap() {
     map = L.map('map', {
         zoomControl: false // Custom position later
     }).setView([10.1505, 76.5711], 7);
-    
+
     // Add Zoom Control at bottom right
     L.control.zoom({
         position: 'bottomright'
@@ -56,7 +56,7 @@ async function fetchCitiesData() {
     try {
         const response = await fetch(`${API_BASE_URL}/cities`);
         if (!response.ok) throw new Error('Network response was not ok');
-        
+
         const data = await response.json();
         if (data.success && data.cities) {
             citiesData = data.cities;
@@ -71,13 +71,13 @@ async function fetchCitiesData() {
 // Update sidebar dashboard
 function updateDashboard() {
     document.getElementById('total-tracked').textContent = citiesData.length;
-    
+
     // Calculate overall status
     let highCount = 0;
     let medCount = 0;
-    
+
     let totalPeople = 0;
-    
+
     citiesData.forEach(city => {
         if (city.processed && city.current_people !== null) {
             totalPeople += city.current_people;
@@ -85,13 +85,13 @@ function updateDashboard() {
             if (city.crowd_level === 'Medium') medCount++;
         }
     });
-    
+
     let overall = 'Calm';
     if (highCount >= 2) overall = 'Very Busy';
     else if (highCount > 0 || medCount >= 3) overall = 'Busy';
-    
+
     document.getElementById('overall-status').textContent = overall;
-    
+
     renderCitiesList();
 }
 
@@ -99,20 +99,20 @@ function updateDashboard() {
 function renderCitiesList() {
     const listEl = document.getElementById('cities-list');
     listEl.innerHTML = '';
-    
+
     // Sort cities: High crowd first
     const sorted = [...citiesData].sort((a, b) => {
         const levelScore = { 'High': 3, 'Medium': 2, 'Low': 1, 'Unknown': 0, 'Not Processed': 0 };
         return (levelScore[b.crowd_level] || 0) - (levelScore[a.crowd_level] || 0);
     });
-    
+
     sorted.forEach(city => {
         const li = document.createElement('li');
         li.className = 'city-item';
-        
+
         const levelClass = city.crowd_level ? city.crowd_level.toLowerCase().replace(' ', '-') : 'unknown';
         const peopleCount = city.current_people !== null ? city.current_people : '?';
-        
+
         li.innerHTML = `
             <div class="city-info">
                 <h4>${city.name}</h4>
@@ -122,14 +122,14 @@ function renderCitiesList() {
                 ${city.crowd_level || 'Unknown'}
             </div>
         `;
-        
+
         // Click to fly to city on map
         li.addEventListener('click', () => {
             if (city.coordinates) {
                 map.flyTo([city.coordinates.lat, city.coordinates.lng], 12, {
                     duration: 1.5
                 });
-                
+
                 // Open popup if marker exists
                 setTimeout(() => {
                     if (markers[city.name]) {
@@ -138,7 +138,7 @@ function renderCitiesList() {
                 }, 1500);
             }
         });
-        
+
         listEl.appendChild(li);
     });
 }
@@ -147,10 +147,10 @@ function renderCitiesList() {
 function updateMapMarkers() {
     citiesData.forEach(city => {
         if (!city.coordinates) return;
-        
+
         const levelClass = city.crowd_level ? city.crowd_level.toLowerCase().replace(' ', '-') : 'unknown';
         const peopleCount = city.current_people !== null ? city.current_people : 0;
-        
+
         // Create custom HTML icon
         const iconHtml = `
             <div class="pulse-marker-wrapper marker-${levelClass}">
@@ -158,7 +158,7 @@ function updateMapMarkers() {
                 <div class="pulse-marker-core"></div>
             </div>
         `;
-        
+
         const customIcon = L.divIcon({
             html: iconHtml,
             className: '',
@@ -166,7 +166,7 @@ function updateMapMarkers() {
             iconAnchor: [15, 15],
             popupAnchor: [0, -15]
         });
-        
+
         // Popup HTML content
         const popupContent = `
             <div class="custom-popup">
@@ -177,7 +177,7 @@ function updateMapMarkers() {
                 <div class="popup-stats">
                     <div class="popup-stat-item">
                         <span class="popup-stat-lbl">Detection Count</span>
-                        <span class="popup-stat-val ${levelClass !== 'unknown' && levelClass !== 'not-processed' ? 'color-'+levelClass : ''}">${peopleCount}</span>
+                        <span class="popup-stat-val ${levelClass !== 'unknown' && levelClass !== 'not-processed' ? 'color-' + levelClass : ''}">${peopleCount}</span>
                     </div>
                     <div class="popup-stat-item" style="text-align: right;">
                         <span class="popup-stat-lbl">Density</span>
@@ -206,7 +206,7 @@ function updateMapMarkers() {
                 maxWidth: 300,
                 minWidth: 260
             }).addTo(map);
-            
+
             markers[city.name] = marker;
         }
     });
@@ -221,30 +221,52 @@ function updateMapMarkers() {
 }
 
 // Open modal with MJPEG stream
-window.openLiveFeed = function(encodedCity, peopleCount, crowdLevel) {
+let liveStreamInterval;
+
+window.openLiveFeed = function (encodedCity, peopleCount, crowdLevel) {
     const city = decodeURIComponent(encodedCity);
     const modal = document.getElementById('live-modal');
     const img = document.getElementById('live-stream-img');
     const title = document.getElementById('live-modal-title');
     const stats = document.getElementById('live-modal-stats');
-    
+
     title.innerHTML = `<div class="live-indicator"></div> Real-time YOLOv8 Feed: ${city}`;
     stats.textContent = `Current Count: ${peopleCount} | Level: ${crowdLevel}`;
-    
+
     // Connect to MJPEG stream
-    const base = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-        ? 'http://localhost:5000' 
+    const base = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000'
         : '';
     img.src = `${base}/api/live-stream/${encodeURIComponent(city)}`;
-    
+
     modal.style.display = 'flex';
+
+    // Poll the stream stats to live-update the UI dynamically
+    if (liveStreamInterval) clearInterval(liveStreamInterval);
+    liveStreamInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`${base}/api/live-stream-stats/${encodeURIComponent(city)}`);
+            if (response.ok) {
+                const data = await response.json();
+                stats.textContent = `Current Count: ${data.count} | Level: ${data.level}`;
+            }
+        } catch (e) {
+            console.error("Error polling live stream stats:", e);
+        }
+    }, 1000); // 1-second interval for real-time feel
 }
 
 function closeLiveModal() {
     const modal = document.getElementById('live-modal');
     const img = document.getElementById('live-stream-img');
-    
+
     // Stop stream
     img.src = '';
     modal.style.display = 'none';
+
+    // Clear interval when modal closes
+    if (liveStreamInterval) {
+        clearInterval(liveStreamInterval);
+        liveStreamInterval = null;
+    }
 }
