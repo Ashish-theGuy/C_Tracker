@@ -57,6 +57,14 @@ KERALA_CITIES = {
         "coordinates": {"lat": 8.7375, "lng": 76.7167},
         "description": "Cliff beach with natural springs and temples",
         "video_file": "../city7.mp4"
+    },
+    "RSET": {
+        "name": "RSET",
+        "state": "Kerala",
+        "country": "India",
+        "coordinates": {"lat": 9.993311, "lng": 76.358384},
+        "description": "Rajagiri School of Engineering & Technology, Kakkanad",
+        "video_file": "http://192.168.1.7:8080/video"
     }
 }
 

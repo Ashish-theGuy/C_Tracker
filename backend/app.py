@@ -12,6 +12,12 @@ from query_processor import QueryProcessor
 from live_analyzer import LiveVideoAnalyzer
 import cv2
 import time
+import threading
+
+def is_valid_video_source(source):
+    """Check if the video source is a local file or a valid network stream."""
+    return str(source).startswith(('http://', 'https://', 'rtsp://')) or os.path.exists(source)
+
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend
@@ -22,7 +28,44 @@ data_manager = DataManager()
 query_processor = QueryProcessor()
 live_analyzer = LiveVideoAnalyzer()
 
+def update_live_streams():
+    """Background thread to continuously update stats for live streams"""
+    while True:
+        try:
+            for city_name, city_info in KERALA_CITIES.items():
+                video_path = city_info['video_file']
+                if str(video_path).startswith(('http://', 'https://', 'rtsp://')):
+                    # Grab a single frame from the live stream
+                    cap = cv2.VideoCapture(video_path)
+                    if cap.isOpened():
+                        ret, frame = cap.read()
+                        if ret:
+                            # Analyze single frame
+                            _, person_count, _ = live_analyzer.analyze_frame(frame)
+                            
+                            # Create a stats dictionary compatible with data_manager
+                            stats = {
+                                'current_people': person_count,
+                                'average_people': person_count,
+                                'max_people': person_count,
+                                'min_people': person_count,
+                                'crowd_level': live_analyzer.detector._classify_crowd_level(person_count)
+                            }
+                            # Save to data_manager
+                            data_manager.save_location_data(city_name, stats, city_info['coordinates'])
+                    cap.release()
+        except Exception as e:
+            print(f"Error in live stream updater: {e}")
+        
+        # Wait before next update to not overwhelm the CPU/Network
+        time.sleep(5)
+
+# Start the background thread
+bg_thread = threading.Thread(target=update_live_streams, daemon=True)
+bg_thread.start()
+
 @app.route('/')
+
 def health_check():
     """Health check endpoint"""
     return jsonify({
@@ -72,7 +115,7 @@ def ask_city():
         # If not processed, process the video now
         if not location_data:
             video_path = city_info['video_file']
-            if os.path.exists(video_path):
+            if is_valid_video_source(video_path):
                 # Process video
                 stats = video_processor.process_location_video(
                     video_path,
@@ -92,7 +135,7 @@ def ask_city():
         # Get live video analysis frames
         video_path = city_info['video_file']
         live_frames = []
-        if os.path.exists(video_path):
+        if is_valid_video_source(video_path):
             try:
                 live_frames = live_analyzer.get_sample_frames(video_path, num_frames=8)
             except Exception as e:
@@ -138,7 +181,7 @@ def process_kerala_videos():
         for city_name, city_info in KERALA_CITIES.items():
             video_path = city_info['video_file']
             
-            if not os.path.exists(video_path):
+            if not is_valid_video_source(video_path):
                 results.append({
                     "city": city_name,
                     "status": "skipped",
@@ -191,7 +234,7 @@ def get_live_analysis(city_name):
             return jsonify({"error": f"City '{city_name}' not found"}), 404
         
         video_path = city_info['video_file']
-        if not os.path.exists(video_path):
+        if not is_valid_video_source(video_path):
             return jsonify({"error": f"Video not found: {video_path}"}), 404
         
         # Get sample frames with YOLO detection
@@ -215,7 +258,7 @@ def live_stream(city_name):
         return jsonify({"error": f"City '{city_name}' not found"}), 404
 
     video_path = city_info['video_file']
-    if not os.path.exists(video_path):
+    if not is_valid_video_source(video_path):
         return jsonify({"error": f"Video not found: {video_path}"}), 404
 
     def generate():
