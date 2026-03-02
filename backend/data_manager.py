@@ -1,123 +1,203 @@
 """
-Data Manager for storing and retrieving location crowd data
+Data Manager for storing and retrieving location crowd data using SQLite
 """
-import json
+import sqlite3
 import os
+import json
 from datetime import datetime
 from typing import Dict, List, Optional
 
 class DataManager:
-    """Manage location data storage and retrieval"""
+    """Manage location data storage and retrieval via SQLite"""
     
-    def __init__(self, data_file: str = None):
+    def __init__(self, db_file: str = None):
         # Use absolute path relative to project root
-        if data_file is None:
+        if db_file is None:
             # Get the directory where this file is located (backend/)
             backend_dir = os.path.dirname(os.path.abspath(__file__))
             # Go up one level to project root
             project_root = os.path.dirname(backend_dir)
-            # Path to data file in project root
-            data_file = os.path.join(project_root, 'data', 'locations_data.json')
-        self.data_file = data_file
+            # Path to db file in project root
+            db_file = os.path.join(project_root, 'data', 'locations_data.db')
+        self.db_file = db_file
         self.ensure_data_directory()
-        self.load_data()
+        self.init_db()
     
     def ensure_data_directory(self):
         """Create data directory if it doesn't exist"""
-        data_dir = os.path.dirname(self.data_file)
+        data_dir = os.path.dirname(self.db_file)
         os.makedirs(data_dir, exist_ok=True)
-    
+        
+    def _get_connection(self):
+        # check_same_thread=False allows Flask's multi-threading to reuse connection safely in SQLite
+        conn = sqlite3.connect(self.db_file, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def init_db(self):
+        """Create necessary tables if they don't exist"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Table for latest status
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS locations_status (
+                location_name TEXT PRIMARY KEY,
+                coordinates_json TEXT,
+                current_people INTEGER,
+                average_people INTEGER,
+                max_people INTEGER,
+                min_people INTEGER,
+                crowd_level TEXT,
+                created_at TEXT,
+                last_updated TEXT
+            )
+        ''')
+        
+        # Table for historical records (append-only)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS locations_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                location_name TEXT,
+                timestamp TEXT,
+                people_count INTEGER,
+                crowd_level TEXT
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+
     def load_data(self):
-        """Load location data from JSON file"""
-        if os.path.exists(self.data_file):
-            try:
-                with open(self.data_file, 'r') as f:
-                    self.locations_data = json.load(f)
-            except:
-                self.locations_data = {}
-        else:
-            self.locations_data = {}
+        """No-op for backward compatibility with app.py's JSON logic"""
+        pass
     
     def save_data(self):
-        """Save location data to JSON file"""
-        with open(self.data_file, 'w') as f:
-            json.dump(self.locations_data, f, indent=2)
+        """No-op for backward compatibility with app.py's JSON logic"""
+        pass
     
     def save_location_data(self, location_name: str, stats: Dict, coordinates: Dict = None):
         """
-        Save or update location data
-        
-        Args:
-            location_name: Name of the location
-            stats: Statistics from video processing
-            coordinates: Location coordinates {lat, lng}
+        Save or update location data instantly to SQLite.
         """
-        self.load_data()  # Reload to get latest data
+        conn = self._get_connection()
+        cursor = conn.cursor()
         
-        # Get or create location entry
-        if location_name in self.locations_data:
-            location = self.locations_data[location_name]
-            # Update existing data
-            location['current_people'] = stats.get('current_people', 0)
-            location['average_people'] = stats.get('average_people', 0)
-            location['max_people'] = stats.get('max_people', 0)
-            location['min_people'] = stats.get('min_people', 0)
-            location['crowd_level'] = stats.get('crowd_level', 'Unknown')
-            location['last_updated'] = datetime.now().isoformat()
-            
-            # Add to history (keep last 10 entries)
-            history_entry = {
-                "timestamp": datetime.now().isoformat(),
-                "people_count": stats.get('current_people', 0),
-                "crowd_level": stats.get('crowd_level', 'Unknown')
-            }
-            location['history'].append(history_entry)
-            if len(location['history']) > 10:
-                location['history'] = location['history'][-10:]
-        else:
-            # Create new location entry
-            self.locations_data[location_name] = {
-                "location_name": location_name,
-                "coordinates": coordinates or {},
-                "current_people": stats.get('current_people', 0),
-                "average_people": stats.get('average_people', 0),
-                "max_people": stats.get('max_people', 0),
-                "min_people": stats.get('min_people', 0),
-                "crowd_level": stats.get('crowd_level', 'Unknown'),
-                "created_at": datetime.now().isoformat(),
-                "last_updated": datetime.now().isoformat(),
-                "history": stats.get('history', [])
-            }
+        now_str = datetime.now().isoformat()
+        coords_str = json.dumps(coordinates or {})
         
-        self.save_data()
+        curr = stats.get('current_people', 0)
+        avg = stats.get('average_people', 0)
+        mx = stats.get('max_people', 0)
+        mn = stats.get('min_people', 0)
+        lvl = stats.get('crowd_level', 'Unknown')
+        
+        # 1. UPSERT the latest status
+        cursor.execute('''
+            INSERT INTO locations_status 
+            (location_name, coordinates_json, current_people, average_people, max_people, min_people, crowd_level, created_at, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(location_name) DO UPDATE SET
+                coordinates_json=excluded.coordinates_json,
+                current_people=excluded.current_people,
+                average_people=excluded.average_people,
+                max_people=excluded.max_people,
+                min_people=excluded.min_people,
+                crowd_level=excluded.crowd_level,
+                last_updated=excluded.last_updated
+        ''', (location_name, coords_str, curr, avg, mx, mn, lvl, now_str, now_str))
+        
+        # 2. Add to history
+        cursor.execute('''
+            INSERT INTO locations_history (location_name, timestamp, people_count, crowd_level)
+            VALUES (?, ?, ?, ?)
+        ''', (location_name, now_str, curr, lvl))
+        
+        # 3. Prune history to keep only last 10 entries per location
+        cursor.execute('''
+            DELETE FROM locations_history 
+            WHERE location_name = ? AND id NOT IN (
+                SELECT id FROM locations_history 
+                WHERE location_name = ? 
+                ORDER BY timestamp DESC LIMIT 10
+            )
+        ''', (location_name, location_name))
+        
+        conn.commit()
+        conn.close()
     
     def get_location_data(self, location_name: str) -> Optional[Dict]:
-        """Get data for a specific location"""
-        self.load_data()  # Reload to get latest data
-        return self.locations_data.get(location_name)
+        """Fetch location data and format identically to old JSON style"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM locations_status WHERE location_name = ?", (location_name,))
+        row = cursor.fetchone()
+        
+        if not row:
+            conn.close()
+            return None
+            
+        # Get history
+        cursor.execute('''
+            SELECT timestamp, people_count, crowd_level 
+            FROM locations_history 
+            WHERE location_name = ? 
+            ORDER BY timestamp ASC
+        ''', (location_name,))
+        
+        history = [dict(r) for r in cursor.fetchall()]
+        
+        conn.close()
+        
+        # Format back to expected dictionary
+        return {
+            "location_name": row["location_name"],
+            "coordinates": json.loads(row["coordinates_json"]),
+            "current_people": row["current_people"],
+            "average_people": row["average_people"],
+            "max_people": row["max_people"],
+            "min_people": row["min_people"],
+            "crowd_level": row["crowd_level"],
+            "created_at": row["created_at"],
+            "last_updated": row["last_updated"],
+            "history": history
+        }
     
     def get_all_locations(self) -> List[Dict]:
-        """Get all locations with their current status"""
-        self.load_data()  # Reload to get latest data
+        """Get all locations with their current status for app.py API"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM locations_status")
+        rows = cursor.fetchall()
         
         locations = []
-        for name, data in self.locations_data.items():
+        for row in rows:
             locations.append({
-                "name": name,
-                "current_people": data.get('current_people', 0),
-                "crowd_level": data.get('crowd_level', 'Unknown'),
-                "coordinates": data.get('coordinates', {}),
-                "last_updated": data.get('last_updated', 'Unknown')
+                "name": row["location_name"],
+                "current_people": row["current_people"],
+                "crowd_level": row["crowd_level"],
+                "coordinates": json.loads(row["coordinates_json"]),
+                "last_updated": row["last_updated"]
             })
-        
+            
+        conn.close()
         return locations
     
     def delete_location(self, location_name: str) -> bool:
-        """Delete a location from data"""
-        self.load_data()
-        if location_name in self.locations_data:
-            del self.locations_data[location_name]
-            self.save_data()
-            return True
-        return False
+        """Delete a location from SQLite"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM locations_status WHERE location_name = ?", (location_name,))
+        deleted = cursor.rowcount > 0
+        
+        if deleted:
+            cursor.execute("DELETE FROM locations_history WHERE location_name = ?", (location_name,))
+            conn.commit()
+            
+        conn.close()
+        return deleted
+
 

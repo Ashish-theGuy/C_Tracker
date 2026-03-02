@@ -16,7 +16,21 @@ import threading
 
 def is_valid_video_source(source):
     """Check if the video source is a local file or a valid network stream."""
-    return str(source).startswith(('http://', 'https://', 'rtsp://')) or os.path.exists(source)
+    if str(source).startswith(('http://', 'https://', 'rtsp://')):
+        return True
+        
+    # Check raw path
+    if os.path.exists(source):
+        return True
+        
+    # If run from project root, `../` might evaluate incorrectly if it's already in the root
+    if source.startswith('../'):
+        # Strip ../ and check in current directory
+        alt_path = source[3:]
+        if os.path.exists(alt_path):
+            return True
+            
+    return False
 
 
 app = Flask(__name__)
@@ -277,8 +291,13 @@ def live_stream(city_name):
         return jsonify({"error": f"Video not found: {video_path}"}), 404
 
     def generate():
-        cap = cv2.VideoCapture(video_path)
+        actual_path = video_path
+        if actual_path.startswith('../') and os.path.exists(actual_path[3:]):
+            actual_path = actual_path[3:]
+            
+        cap = cv2.VideoCapture(actual_path)
         if not cap.isOpened():
+            print(f"Failed to open video: {actual_path}")
             return
 
         try:

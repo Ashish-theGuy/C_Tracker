@@ -64,7 +64,7 @@ KERALA_CITIES = {
         "country": "India",
         "coordinates": {"lat": 9.993311, "lng": 76.358384},
         "description": "Rajagiri School of Engineering & Technology, Kakkanad",
-        "video_file": "http://192.168.1.7:8080/video"
+        "video_file": "http://10.0.4.187:8080/video"
     }
 }
 
@@ -83,4 +83,12 @@ def get_all_cities():
 def get_city_names():
     """Get list of all city names"""
     return list(KERALA_CITIES.keys())
+
+# Resolve relative video paths to absolute paths on load
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+for city in KERALA_CITIES.values():
+    video = city.get('video_file', '')
+    if video.startswith('../'):
+        city['video_file'] = os.path.normpath(os.path.join(current_dir, video))
 
