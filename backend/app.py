@@ -348,6 +348,7 @@ def get_cities():
                 "description": city_info['description'],
                 "coordinates": city_info['coordinates'],
                 "video_file": city_info['video_file'],
+                "parent": city_info.get('parent'),
                 "processed": location_data is not None,
                 "current_people": location_data.get('current_people', 0) if location_data else None,
                 # Backwards-compatibility alias for older frontends

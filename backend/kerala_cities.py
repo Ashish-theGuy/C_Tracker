@@ -65,6 +65,33 @@ KERALA_CITIES = {
         "coordinates": {"lat": 9.993311, "lng": 76.358384},
         "description": "Rajagiri School of Engineering & Technology, Kakkanad",
         "video_file": "http://10.0.4.187:8080/video"
+    },
+    "RSET_Library": {
+        "name": "Library (RSET)",
+        "state": "Kerala",
+        "country": "India",
+        "coordinates": {"lat": 9.993711, "lng": 76.358084},
+        "description": "RSET Central Library",
+        "video_file": "http://10.0.4.80:8080/video",
+        "parent": "RSET"
+    },
+    "RSET_Canteen": {
+        "name": "Canteen (RSET)",
+        "state": "Kerala",
+        "country": "India",
+        "coordinates": {"lat": 9.993011, "lng": 76.358684},
+        "description": "RSET Main Canteen",
+        "video_file": "http://10.0.4.1:8080/video",
+        "parent": "RSET"
+    },
+    "RSET_S6IT": {
+        "name": "S6 IT Classroom",
+        "state": "Kerala",
+        "country": "India",
+        "coordinates": {"lat": 9.992911, "lng": 76.358000},
+        "description": "Semester 6 Information Technology Classroom",
+        "video_file": "http://10.0.4.115:8080/video",
+        "parent": "RSET"
     }
 }
 

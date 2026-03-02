@@ -6,6 +6,7 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
 // Map instance
 let map;
 let markers = {};
+let subMarkers = {};
 let citiesData = [];
 
 // Initialize application
@@ -49,6 +50,19 @@ function initMap() {
         subdomains: 'abcd',
         maxZoom: 20
     }).addTo(map);
+
+    // Hide sub-markers when zoomed out
+    map.on('zoomend', function () {
+        if (map.getZoom() < 16) {
+            Object.values(subMarkers).forEach(parentGroup => {
+                Object.values(parentGroup).forEach(marker => {
+                    if (map.hasLayer(marker)) {
+                        map.removeLayer(marker);
+                    }
+                });
+            });
+        }
+    });
 }
 
 // Fetch cities data from API
@@ -70,7 +84,8 @@ async function fetchCitiesData() {
 
 // Update sidebar dashboard
 function updateDashboard() {
-    document.getElementById('total-tracked').textContent = citiesData.length;
+    const mainCities = citiesData.filter(c => !c.parent);
+    document.getElementById('total-tracked').textContent = mainCities.length;
 
     // Calculate overall status
     let highCount = 0;
@@ -78,7 +93,7 @@ function updateDashboard() {
 
     let totalPeople = 0;
 
-    citiesData.forEach(city => {
+    mainCities.forEach(city => {
         if (city.processed && city.current_people !== null) {
             totalPeople += city.current_people;
             if (city.crowd_level === 'High') highCount++;
@@ -101,7 +116,8 @@ function renderCitiesList() {
     listEl.innerHTML = '';
 
     // Sort cities: High crowd first
-    const sorted = [...citiesData].sort((a, b) => {
+    const mainCities = citiesData.filter(c => !c.parent);
+    const sorted = [...mainCities].sort((a, b) => {
         const levelScore = { 'High': 3, 'Medium': 2, 'Low': 1, 'Unknown': 0, 'Not Processed': 0 };
         return (levelScore[b.crowd_level] || 0) - (levelScore[a.crowd_level] || 0);
     });
@@ -162,9 +178,9 @@ function updateMapMarkers() {
         const customIcon = L.divIcon({
             html: iconHtml,
             className: '',
-            iconSize: [30, 30],
-            iconAnchor: [15, 15],
-            popupAnchor: [0, -15]
+            iconSize: city.parent ? [22, 22] : [30, 30],
+            iconAnchor: city.parent ? [11, 11] : [15, 15],
+            popupAnchor: city.parent ? [0, -11] : [0, -15]
         });
 
         // Popup HTML content
@@ -194,20 +210,57 @@ function updateMapMarkers() {
             </div>
         `;
 
-        if (markers[city.name]) {
-            // Update existing marker
-            markers[city.name].setIcon(customIcon);
-            markers[city.name].setPopupContent(popupContent);
-        } else {
-            // Create new marker
-            const marker = L.marker([city.coordinates.lat, city.coordinates.lng], {
-                icon: customIcon
-            }).bindPopup(popupContent, {
-                maxWidth: 300,
-                minWidth: 260
-            }).addTo(map);
+        if (city.parent) {
+            if (!subMarkers[city.parent]) subMarkers[city.parent] = {};
 
-            markers[city.name] = marker;
+            if (subMarkers[city.parent][city.name]) {
+                // Update existing sub-marker
+                subMarkers[city.parent][city.name].setIcon(customIcon);
+                subMarkers[city.parent][city.name].setPopupContent(popupContent);
+            } else {
+                // Create new sub-marker, do not add to map
+                const marker = L.marker([city.coordinates.lat, city.coordinates.lng], {
+                    icon: customIcon
+                }).bindPopup(popupContent, {
+                    maxWidth: 300,
+                    minWidth: 260
+                });
+                subMarkers[city.parent][city.name] = marker;
+            }
+        } else {
+            if (markers[city.name]) {
+                // Update existing marker
+                markers[city.name].setIcon(customIcon);
+                markers[city.name].setPopupContent(popupContent);
+            } else {
+                // Create new marker
+                const marker = L.marker([city.coordinates.lat, city.coordinates.lng], {
+                    icon: customIcon
+                }).bindPopup(popupContent, {
+                    maxWidth: 300,
+                    minWidth: 260
+                }).addTo(map);
+
+                marker.on('click', () => {
+                    // Fly to this marker
+                    map.flyTo([city.coordinates.lat, city.coordinates.lng], 18, {
+                        duration: 1.5
+                    });
+
+                    // Show submarkers if any
+                    setTimeout(() => {
+                        if (subMarkers[city.name]) {
+                            Object.values(subMarkers[city.name]).forEach(subMarker => {
+                                if (!map.hasLayer(subMarker)) {
+                                    subMarker.addTo(map);
+                                }
+                            });
+                        }
+                    }, 500); // slight delay for smooth transition
+                });
+
+                markers[city.name] = marker;
+            }
         }
     });
 
