@@ -44,11 +44,18 @@ live_analyzer = LiveVideoAnalyzer()
 
 def update_live_streams():
     """Background thread to continuously update stats for live streams"""
+    # Set OpenCV FFMPEG timeout to 5 seconds to prevent hanging on offline IP cameras
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "timeout;5000"
+    
     while True:
         try:
             for city_name, city_info in KERALA_CITIES.items():
                 video_path = city_info['video_file']
                 if str(video_path).startswith(('http://', 'https://', 'rtsp://')):
+                    # Skip if this stream is actively being viewed in the UI
+                    if city_name in active_stream_stats:
+                        continue
+                        
                     # Grab a single frame from the live stream
                     cap = cv2.VideoCapture(video_path)
                     if cap.isOpened():
@@ -67,7 +74,7 @@ def update_live_streams():
                             }
                             # Save to data_manager
                             data_manager.save_location_data(city_name, stats, city_info['coordinates'])
-                    cap.release()
+                        cap.release()
         except Exception as e:
             print(f"Error in live stream updater: {e}")
         
@@ -264,7 +271,7 @@ def get_live_analysis(city_name):
         return jsonify({"error": str(e)}), 500
 
 active_stream_stats = {}
-
+last_db_update = {}
 @app.route('/api/live-stream-stats/<city_name>')
 def live_stream_stats(city_name):
     """Get current stats from an active MJPEG stream for a city"""
@@ -311,10 +318,24 @@ def live_stream(city_name):
                 annotated_frame, person_count, _ = live_analyzer.analyze_frame(frame)
                 
                 # Update global stats for frontend polling to sync UI text with the video
+                level = live_analyzer.detector._classify_crowd_level(person_count)
                 active_stream_stats[city_name] = {
                     "count": person_count,
-                    "level": live_analyzer.detector._classify_crowd_level(person_count)
+                    "level": level
                 }
+
+                # Update data_manager every 2 seconds to keep markers in sync
+                now = time.time()
+                if now - last_db_update.get(city_name, 0) > 2.0:
+                    stats = {
+                        'current_people': person_count,
+                        'average_people': person_count,
+                        'max_people': person_count,
+                        'min_people': person_count,
+                        'crowd_level': level
+                    }
+                    data_manager.save_location_data(city_name, stats, city_info['coordinates'])
+                    last_db_update[city_name] = now
 
                 # Encode as JPEG
                 success, buffer = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
@@ -343,17 +364,32 @@ def get_cities():
         cities = []
         for city_name, city_info in KERALA_CITIES.items():
             location_data = data_manager.get_location_data(city_name)
+            live_stats = active_stream_stats.get(city_name)
+            
+            # Use live stats if actively viewed, else db, else default
+            if live_stats:
+                current_people = live_stats['count']
+                crowd_level = live_stats['level']
+                processed = True
+            elif location_data:
+                current_people = location_data.get('current_people', 0)
+                crowd_level = location_data.get('crowd_level', 'Unknown')
+                processed = True
+            else:
+                current_people = None
+                crowd_level = 'Not Processed'
+                processed = False
+                
             cities.append({
                 "name": city_name,
                 "description": city_info['description'],
                 "coordinates": city_info['coordinates'],
                 "video_file": city_info['video_file'],
                 "parent": city_info.get('parent'),
-                "processed": location_data is not None,
-                "current_people": location_data.get('current_people', 0) if location_data else None,
-                # Backwards-compatibility alias for older frontends
-                "current_crowd": location_data.get('current_people', 0) if location_data else None,
-                "crowd_level": location_data.get('crowd_level', 'Unknown') if location_data else 'Not Processed'
+                "processed": processed,
+                "current_people": current_people,
+                "current_crowd": current_people,
+                "crowd_level": crowd_level
             })
         
         return jsonify({

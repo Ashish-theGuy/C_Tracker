@@ -64,7 +64,7 @@ KERALA_CITIES = {
         "country": "India",
         "coordinates": {"lat": 9.993311, "lng": 76.358384},
         "description": "Rajagiri School of Engineering & Technology, Kakkanad",
-        "video_file": "http://10.0.4.187:8080/video"
+        "video_file": "http://10.179.26.207:8080/video"
     },
     "RSET_Library": {
         "name": "Library (RSET)",
